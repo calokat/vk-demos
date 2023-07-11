@@ -236,10 +236,8 @@ private:
     vkd::Buffer indexBuffer;
 
     std::vector<vkd::Buffer> uniformBuffers;
-    std::vector<void*> uniformBuffersMapped;
 
     std::vector<vkd::Buffer> dirLightUniBuffers;
-    std::vector<void*> dirLightUniBuffersMapped;
 
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
@@ -1403,17 +1401,13 @@ private:
 
         dirLightUniBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
-        uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
-        
-        dirLightUniBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
-
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             gpuAllocator.Allocate(uniformBuffers[i], uboBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-            vkMapMemory(device, uniformBuffers[i].memory_, 0, uboBufferSize, 0, &uniformBuffersMapped[i]);
+            vkMapMemory(device, uniformBuffers[i].memory_, 0, uboBufferSize, 0, &uniformBuffers[i].mappedData_);
             gpuAllocator.Allocate(dirLightUniBuffers[i], dirLightSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-            vkMapMemory(device, dirLightUniBuffers[i].memory_, 0, dirLightSize, 0, &dirLightUniBuffersMapped[i]);
+            vkMapMemory(device, dirLightUniBuffers[i].memory_, 0, dirLightSize, 0, &dirLightUniBuffers[i].mappedData_);
         }
 
         lightBuffer.dirLight.color = glm::vec3(1.0f, 0.5f, 0.2f);
@@ -1748,9 +1742,9 @@ private:
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
-        memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+        memcpy(uniformBuffers[currentImage].mappedData_, &ubo, sizeof(ubo));
 
-        memcpy(dirLightUniBuffersMapped[currentImage], &lightBuffer, sizeof(lightBuffer));
+        memcpy(dirLightUniBuffers[currentImage].mappedData_, &lightBuffer, sizeof(lightBuffer));
     }
 
     void drawFrame() {

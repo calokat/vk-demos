@@ -6,6 +6,7 @@ namespace vkd {
     struct Buffer {
         VkBuffer buffer_;
         VkDeviceMemory memory_;
+        void* mappedData_{nullptr};
     };
 };
 
