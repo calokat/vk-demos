@@ -24,7 +24,7 @@ git submodule update
 
 ## Building
 
-- Make sure you have the Volkan SDK for your platform.
+- Make sure you have the Vulkan SDK for your platform.
 - GLFW is included as a submodule in this package. However, for Linux systems it is recommended to install `glfw-devel` or equivalent since that will also install all of the X11 headers that GLFW needs.
 
 ```
