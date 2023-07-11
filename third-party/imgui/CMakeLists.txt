@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.10)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+file(GLOB IMGUI_SRC ./*.cpp)
+add_library(imgui ${IMGUI_SRC})
+find_library(GLFW glfw REQUIRED)
+target_include_directories(imgui PUBLIC ./)
