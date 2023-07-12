@@ -37,6 +37,24 @@
 #include "vkd/Buffer.h"
 #include "vkd/GpuAllocator.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#undef max
+std::string GetPlatformPath(std::string originalPath) {
+    TCHAR szFileName[MAX_PATH];
+
+    GetModuleFileName(NULL, szFileName, MAX_PATH);
+
+    std::string modifiedFilePath = std::string(szFileName) + std::string("/../") + originalPath;
+
+    return modifiedFilePath;
+}
+#else
+std::string GetPlatformPath(std::string originalPath) {
+    return originalPath;
+}
+#endif
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
@@ -1028,7 +1046,7 @@ private:
 
     void createTextureImage() {
         int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load(ALBEDO_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        stbi_uc* pixels = stbi_load(GetPlatformPath(ALBEDO_PATH).c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
         VkDeviceSize imageSize = texWidth * texHeight * 4;
         mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
@@ -1318,7 +1336,7 @@ private:
         std::vector<tinyobj::shape_t> shapes;
         std::vector<tinyobj::material_t> materials;
         std::string warn, err;
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, GetPlatformPath(MODEL_PATH).c_str())) {
             throw std::runtime_error(warn + err);
         }
 
@@ -2010,7 +2028,7 @@ private:
     }
 
     static std::vector<char> readFile(const std::string& filename) {
-        std::ifstream file(filename, std::ios::ate | std::ios::binary);
+        std::ifstream file(GetPlatformPath(filename), std::ios::ate | std::ios::binary);
 
         if (!file.is_open()) {
             throw std::runtime_error("failed to open file!");
