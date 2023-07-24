@@ -30,6 +30,7 @@
 #include <optional>
 #include <set>
 #include <unordered_map>
+#include <random>
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -157,6 +158,8 @@ struct InstanceData {
 
 };
 
+constexpr int TOTAL_INSTANCES = 8;
+
 class HelloTriangleApplication {
 public:
     void run() {
@@ -191,8 +194,6 @@ private:
     VkDescriptorSetLayout descriptorSetLayout;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
-
-    VkPipeline outlinePipeline;
 
     VkCommandPool commandPool;
 
@@ -229,8 +230,31 @@ private:
     std::vector<VkFence> inFlightFences;
     uint32_t currentFrame = 0;
 
-    glm::vec3 perlinVec{1.5f, 1.5f, 1.5f};
-    float zScaleDelta = -.01f;
+
+
+    struct PerlinState {
+        std::array<glm::vec3, TOTAL_INSTANCES> perlinVecs;
+        std::array<float, TOTAL_INSTANCES> perlinValues;
+
+        void seed() {
+            std::default_random_engine perlinPlanter = std::default_random_engine(static_cast<unsigned>(time(nullptr)));
+            std::uniform_real_distribution<float> uniformDist(0, 7);
+            for (int i = 0; i < TOTAL_INSTANCES; ++i) {
+                perlinVecs[i] = glm::vec3(uniformDist(perlinPlanter));
+            }
+        }
+
+        void update() {
+            for (int i = 0; i < TOTAL_INSTANCES; ++i) {
+                // ensure that the perlinVec's x value is never an integer by adding an offset
+                const float MAGIC_OFFSET = .01415f;
+                perlinValues[i] = glm::abs(glm::perlin(perlinVecs[i]));
+                perlinVecs[i].x += MAGIC_OFFSET;
+            }
+        }
+    };
+
+    PerlinState perlinState;
 
     bool framebufferResized = false;
 
@@ -274,6 +298,7 @@ private:
         createDescriptorSets();
         createCommandBuffers();
         createSyncObjects();
+        perlinState.seed();
     }
 
     void mainLoop() {
@@ -309,7 +334,6 @@ private:
         cleanupSwapChain();
 
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
-        vkDestroyPipeline(device, outlinePipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
 
@@ -671,14 +695,8 @@ private:
         auto vertShaderCode = readFile("shaders/shader.vert.spv");
         auto fragShaderCode = readFile("shaders/shader.frag.spv");
 
-        auto outlineVertShaderCode = readFile("shaders/outline.vert.spv");
-        auto outlineFragShaderCode = readFile("shaders/outline.frag.spv");
-
         VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
         VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
-
-        VkShaderModule outlineVertShaderModule = createShaderModule(outlineVertShaderCode);
-        VkShaderModule outlineFragShaderModule = createShaderModule(outlineFragShaderCode);
 
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
         vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -772,10 +790,18 @@ private:
         dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
         dynamicState.pDynamicStates = dynamicStates.data();
 
+        VkPushConstantRange pcRange{};
+        pcRange.offset = 0;
+        pcRange.size = sizeof (float) * perlinState.perlinValues.size();
+        pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.setLayoutCount = 1;
         pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+
+        pipelineLayoutInfo.pPushConstantRanges = &pcRange;
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
 
         if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
@@ -797,39 +823,13 @@ private:
         pipelineInfo.renderPass = renderPass;
         pipelineInfo.subpass = 0;
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-        // depthStencil.depthTestEnable = VK_FALSE;
 
         if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics pipeline!");
         }
 
-        depthStencil.back.compareOp = VK_COMPARE_OP_NOT_EQUAL;
-        depthStencil.back.failOp = VK_STENCIL_OP_KEEP;
-        depthStencil.back.depthFailOp = VK_STENCIL_OP_KEEP;
-        depthStencil.back.passOp = VK_STENCIL_OP_REPLACE;
-        depthStencil.depthTestEnable = VK_FALSE;
-        depthStencil.front = depthStencil.back;
-
-        vertShaderStageInfo.module = outlineVertShaderModule;
-        fragShaderStageInfo.module = outlineFragShaderModule;
-
-
-        VkPipelineShaderStageCreateInfo outlineShaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
-
-        pipelineInfo.pStages = outlineShaderStages;
-
-        pipelineInfo.pDepthStencilState = &depthStencil;
-
-        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &outlinePipeline) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create graphics pipeline!");
-        }
-
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);
-
-        vkDestroyShaderModule(device, outlineFragShaderModule, nullptr);
-        vkDestroyShaderModule(device, outlineVertShaderModule, nullptr);
-
     }
 
     void createFramebuffers() {
@@ -1180,9 +1180,9 @@ private:
     void createInstancedData() {
         instanceData.resize(4);
         instanceData[0] = {{0, 0}};
-        instanceData[1] = {{2.5, 2.5}};
-        instanceData[2] = {{2.5, 0}};
-        instanceData[3] = {{0, 2.5}};
+        instanceData[1] = {{2.2, 2.2}};
+        instanceData[2] = {{2.2, 0}};
+        instanceData[3] = {{0, 2.2}};
     }
 
     void createVertexBuffers() {
@@ -1456,9 +1456,7 @@ private:
 
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), instanceData.size(), 0, 0, 0);
-
-            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, outlinePipeline);
+            vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * perlinState.perlinValues.size(), &perlinState.perlinValues);
 
             vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), instanceData.size(), 0, 0, 0);
 
@@ -1491,12 +1489,8 @@ private:
     }
 
     void updateUniformBuffer(uint32_t currentImage) {
-        float newZScale = glm::perlin(perlinVec);
-        perlinVec.x += .01415f;
-        newZScale = (newZScale + 1) / 2;
-
         UniformBufferObject ubo{};
-        ubo.model =  glm::scale(glm::mat4(1), glm::vec3(1.0f, 1.0f, newZScale));
+        ubo.model = glm::mat4(1.0);
         ubo.view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
@@ -1518,6 +1512,7 @@ private:
         }
 
         updateUniformBuffer(currentFrame);
+        perlinState.update();
 
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
 

@@ -9,12 +9,15 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 proj;
 } ubo;
 
-
+layout( push_constant ) uniform constants
+{
+	float perlinValues[8];
+} PushConstants;
 
 void main() {
     mat4 scaleMat = {{1.1, 0, 0, 0},
                     {0, 1.1, 0, 0},
-                    {0, 0, 1.1, 0},
+                    {0, 0, 1.1 * PushConstants.perlinValues[gl_InstanceIndex], 0},
                     {0, 0, 0, 1}};
     mat4 translateMat = {{1, 0, 0, 0},
                         {0, 1, 0, 0},

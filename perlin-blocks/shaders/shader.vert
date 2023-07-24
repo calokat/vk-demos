@@ -12,10 +12,16 @@ layout(location = 2) in vec2 gridPos;
 
 layout(location = 0) out vec3 fragColor;
 
+layout( push_constant ) uniform constants
+{
+	float perlinValues[8];
+} PushConstants;
+
+
 void main() {
     mat4 translateMat = {{1, 0, 0, 0},
                         {0, 1, 0, 0},
-                        {0, 0, 1, 0},
+                        {0, 0, PushConstants.perlinValues[gl_InstanceIndex], 0},
                         {gridPos.x, gridPos.y, 0, 1}};
     gl_Position = ubo.proj * ubo.view * translateMat * ubo.model * vec4(inPosition, 1.0);
     fragColor = inColor;
