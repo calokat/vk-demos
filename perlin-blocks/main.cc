@@ -131,6 +131,32 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;
 };
 
+struct InstanceData {
+    glm::vec2 gridPos{};
+
+    static VkVertexInputBindingDescription getBindingDescription() {
+        VkVertexInputBindingDescription bindingDescription{};
+        bindingDescription.binding = 1;
+        bindingDescription.stride = sizeof(InstanceData);
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+
+        return bindingDescription;
+    }
+
+    static std::array<VkVertexInputAttributeDescription, 1> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 1> attributeDescriptions{};
+
+        attributeDescriptions[0].binding = 1;
+        attributeDescriptions[0].location = 2;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[0].offset = 0;
+
+        return attributeDescriptions;
+    }
+
+
+};
+
 class HelloTriangleApplication {
 public:
     void run() {
@@ -179,11 +205,15 @@ private:
     VkImageView depthImageView;
 
     std::vector<Vertex> vertices;
+    std::vector<InstanceData> instanceData;
     std::vector<uint32_t> indices;
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
+
+    VkBuffer instanceBuffer;
+    VkDeviceMemory instanceBufferMemory;
 
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
@@ -235,7 +265,9 @@ private:
         createDepthResources();
         createFramebuffers();
         loadModel();
+        createInstancedData();
         createVertexBuffers();
+        createInstanceBuffers();
         createIndexBuffer();
         createUniformBuffers();
         createDescriptorPool();
@@ -295,6 +327,9 @@ private:
 
         vkDestroyBuffer(device, vertexBuffer, nullptr);
         vkFreeMemory(device, vertexBufferMemory, nullptr);
+
+        vkDestroyBuffer(device, instanceBuffer, nullptr);
+        vkFreeMemory(device, instanceBufferMemory, nullptr);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
@@ -662,12 +697,14 @@ private:
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
-        auto bindingDescription = Vertex::getBindingDescription();
-        auto attributeDescriptions = Vertex::getAttributeDescriptions();
+        std::array<VkVertexInputBindingDescription, 2> bindingDescription = {Vertex::getBindingDescription(), InstanceData::getBindingDescription()};
+        auto vertexAttributeDescriptions = Vertex::getAttributeDescriptions();
+        auto instanceAttributeDescriptions = InstanceData::getAttributeDescriptions();
+        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions = {vertexAttributeDescriptions[0], vertexAttributeDescriptions[1], instanceAttributeDescriptions[0]};
 
-        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.vertexBindingDescriptionCount = bindingDescription.size();
         vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-        vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+        vertexInputInfo.pVertexBindingDescriptions = bindingDescription.data();
         vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -1140,6 +1177,14 @@ private:
         }
     }
 
+    void createInstancedData() {
+        instanceData.resize(4);
+        instanceData[0] = {{0, 0}};
+        instanceData[1] = {{2.5, 2.5}};
+        instanceData[2] = {{2.5, 0}};
+        instanceData[3] = {{0, 2.5}};
+    }
+
     void createVertexBuffers() {
         VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
@@ -1149,7 +1194,7 @@ private:
 
         void* data;
         vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-            memcpy(data, vertices.data(), (size_t) bufferSize);
+            memcpy(data, vertices.data(), static_cast<size_t>(bufferSize));
         vkUnmapMemory(device, stagingBufferMemory);
 
         createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
@@ -1158,6 +1203,25 @@ private:
 
         vkDestroyBuffer(device, stagingBuffer, nullptr);
         vkFreeMemory(device, stagingBufferMemory, nullptr);
+        
+    }
+
+    void createInstanceBuffers() {
+        VkDeviceSize bufferSize = sizeof(InstanceData) * instanceData.size();
+        VkBuffer instanceStagingBuffer;
+        VkDeviceMemory instanceStagingBufferMemory;
+        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, instanceStagingBuffer, instanceStagingBufferMemory);
+        void* data;
+        vkMapMemory(device, instanceStagingBufferMemory, 0, bufferSize, 0, &data);
+            memcpy(data, instanceData.data(), static_cast<size_t>(bufferSize));
+        vkUnmapMemory(device, instanceStagingBufferMemory);
+
+        createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, instanceBuffer, instanceBufferMemory);
+
+        copyBuffer(instanceStagingBuffer, instanceBuffer, bufferSize);
+
+        vkDestroyBuffer(device, instanceStagingBuffer, nullptr);
+        vkFreeMemory(device, instanceStagingBufferMemory, nullptr);
     }
 
     void createIndexBuffer() {
@@ -1383,17 +1447,20 @@ private:
             VkDeviceSize offsets[] = {0};
             vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
+            VkBuffer instanceBuffers[] = {instanceBuffer};
+            vkCmdBindVertexBuffers(commandBuffer, 1, 1, instanceBuffers, offsets);
+
             vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), instanceData.size(), 0, 0, 0);
 
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, outlinePipeline);
 
-            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), instanceData.size(), 0, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 
