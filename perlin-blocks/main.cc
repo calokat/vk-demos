@@ -195,6 +195,8 @@ private:
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
 
+    VkPipeline outlinePipeline;
+
     VkCommandPool commandPool;
 
     VkImage colorImage;
@@ -334,6 +336,7 @@ private:
         cleanupSwapChain();
 
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
+        vkDestroyPipeline(device, outlinePipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
 
@@ -695,8 +698,14 @@ private:
         auto vertShaderCode = readFile("shaders/shader.vert.spv");
         auto fragShaderCode = readFile("shaders/shader.frag.spv");
 
+        auto outlineVertShaderCode = readFile("shaders/outline.vert.spv");
+        auto outlineFragShaderCode = readFile("shaders/outline.frag.spv");
+
         VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
         VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+        VkShaderModule outlineVertShaderModule = createShaderModule(outlineVertShaderCode);
+        VkShaderModule outlineFragShaderModule = createShaderModule(outlineFragShaderCode);
 
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
         vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -828,8 +837,33 @@ private:
             throw std::runtime_error("failed to create graphics pipeline!");
         }
 
+        depthStencil.back.compareOp = VK_COMPARE_OP_NOT_EQUAL;
+        depthStencil.back.failOp = VK_STENCIL_OP_KEEP;
+        depthStencil.back.depthFailOp = VK_STENCIL_OP_KEEP;
+        depthStencil.back.passOp = VK_STENCIL_OP_REPLACE;
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_FALSE;
+        depthStencil.front = depthStencil.back;
+
+        vertShaderStageInfo.module = outlineVertShaderModule;
+        fragShaderStageInfo.module = outlineFragShaderModule;
+
+
+        VkPipelineShaderStageCreateInfo outlineShaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+
+        pipelineInfo.pStages = outlineShaderStages;
+
+        pipelineInfo.pDepthStencilState = &depthStencil;
+
+        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &outlinePipeline) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create graphics pipeline!");
+        }
+
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
         vkDestroyShaderModule(device, vertShaderModule, nullptr);
+
+        vkDestroyShaderModule(device, outlineFragShaderModule, nullptr);
+        vkDestroyShaderModule(device, outlineVertShaderModule, nullptr);
     }
 
     void createFramebuffers() {
@@ -1457,6 +1491,10 @@ private:
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
             vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * perlinState.perlinValues.size(), &perlinState.perlinValues);
+
+            vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), instanceData.size(), 0, 0, 0);
+
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, outlinePipeline);
 
             vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), instanceData.size(), 0, 0, 0);
 
