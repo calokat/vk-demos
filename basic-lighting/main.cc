@@ -1429,7 +1429,7 @@ private:
         }
 
         lightBuffer.dirLight.color = glm::vec3(1.0f, 0.5f, 0.2f);
-        lightBuffer.dirLight.direction = glm::vec3(-1);
+        lightBuffer.dirLight.direction = glm::vec3(1, 0, -1);
     }
 
     void createDescriptorPool() {
@@ -1756,7 +1756,7 @@ private:
 
         UniformBufferObject ubo{};
         ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.view = glm::lookAt(glm::vec3(3.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
@@ -1782,8 +1782,10 @@ private:
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         ImGui::Begin("Basic Lighting");
+        ImVec2 defaultWindowSize{300, 300};
+        ImGui::SetWindowSize(defaultWindowSize);
         ImGui::ColorPicker3("Light color", glm::value_ptr(lightBuffer.dirLight.color));
-        ImGui::InputFloat3("Direction", glm::value_ptr(lightBuffer.dirLight.direction));
+        ImGui::DragFloat3("Direction", glm::value_ptr(lightBuffer.dirLight.direction), .01f, -1, 1);
         ImGui::End();
         ImGui::Render();
 
